@@ -9,6 +9,7 @@ Upload an image of a dog
 The model analyzes the image
 It predicts the most likely breed
 Displays the result along with confidence
+
 🧠 How it’s built
 
 Instead of training a model from scratch, this project uses MobileNetV2, a pretrained deep learning model. It’s already trained on a large dataset (ImageNet), so it can recognize many objects, including dog breeds.
