@@ -25,4 +25,4 @@ Streamlit (for web app UI)
 🌐 Live Demo
 
 You can try the app here:
-👉 [Add your Streamlit deployment link here]
+👉 https://dogbreedclassification-xhhjhkfrn2bch8dappvqesu.streamlit.app/
