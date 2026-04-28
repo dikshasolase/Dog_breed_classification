@@ -1,11 +1,10 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-from tensorflow.keras.applications.mobilenet_v2 import (
-    MobileNetV2,
-    preprocess_input,
-    decode_predictions
-)
+
+import torch
+from torchvision import models, transforms
+from torchvision.models import MobileNet_V2_Weights
 
 # Page config
 st.set_page_config(
@@ -13,65 +12,80 @@ st.set_page_config(
     layout="centered"
 )
 
-# Hide sidebar completely (optional but included)
+# Hide sidebar
 st.markdown("""
     <style>
         section[data-testid="stSidebar"] {display: none;}
     </style>
 """, unsafe_allow_html=True)
 
-# Load pretrained model
+# Load PyTorch model
 @st.cache_resource
 def load_model():
-    return MobileNetV2(weights="imagenet")
+    model = models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
+    model.eval()
+    return model
 
 model = load_model()
+
+# Image preprocessing (PyTorch style)
+preprocess = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
 
 # UI
 st.title("🐶 AI Dog Breed Detection System")
 st.write("Upload a dog image and the model will try to identify the breed.")
 
-# Upload image
 uploaded_file = st.file_uploader(
     "Choose a dog image...",
     type=["jpg", "png", "jpeg"]
 )
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file)
+    image = Image.open(uploaded_file).convert("RGB")
 
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocess image
-    img = image.resize((224, 224))
-    img = np.array(img)
-
-    # Handle RGBA images
-    if img.shape[-1] == 4:
-        img = img[:, :, :3]
-
-    img = np.expand_dims(img, axis=0)
-    img = preprocess_input(img)
+    img = preprocess(image)
+    img = img.unsqueeze(0)
 
     # Prediction
     with st.spinner("Analyzing image..."):
-        preds = model.predict(img)
-        results = decode_predictions(preds, top=3)[0]
+        with torch.no_grad():
+            outputs = model(img)
+            probs = torch.nn.functional.softmax(outputs[0], dim=0)
 
-    # Filter dog-related predictions
+        top5_prob, top5_catid = torch.topk(probs, 3)
+
+    # Labels (ImageNet classes)
+    import json
+    import urllib.request
+
+    LABELS_URL = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
+    labels = urllib.request.urlopen(LABELS_URL).read().decode("utf-8").split("\n")
+
+    results = []
+    for i in range(3):
+        results.append((labels[top5_catid[i]], top5_prob[i].item()))
+
+    # Filter dog-related results
     dog_keywords = ["dog", "retriever", "shepherd", "terrier", "hound", "spaniel"]
-    filtered = [r for r in results if any(k in r[1] for k in dog_keywords)]
+    filtered = [r for r in results if any(k in r[0].lower() for k in dog_keywords)]
 
-    # Select best result
     if filtered:
-        top_label = filtered[0][1]
-        top_prob = filtered[0][2] * 100
+        top_label = filtered[0][0]
+        top_prob = filtered[0][1] * 100
     else:
-        top_label = results[0][1]
-        top_prob = results[0][2] * 100
+        top_label = results[0][0]
+        top_prob = results[0][1] * 100
 
-    # Display result
-    st.success(f"Predicted Breed: {top_label.replace('_',' ').title()}")
+    st.success(f"Predicted Breed: {top_label}")
     st.write(f"Confidence: {top_prob:.2f}%")
 
 else:
